@@ -1,6 +1,6 @@
-import os
+import os, json
 
-dockerfileTemplate = """FROM node:{0}-slim
+dockerfileTemplate = """FROM node:{node_version}-slim
 
 # Install latest chrome package.
 # Note: this installs the necessary libs to make the bundled version of Chromium that Pupppeteer
@@ -19,68 +19,54 @@ RUN apt-get update && apt-get install -y xvfb xauth \\
     && rm -rf /var/lib/apt/lists/* \\
     && rm -rf /src/*.deb
 
+RUN mkdir -p /app
+
+RUN cd /app && echo "{{}}" > package.json && npm install --save puppeteer@{puppeteer_version}
+
 """
 
-nodeVersions = [
-    "10.6.0",
-    "10.5.0",
-    "10.4.1",
-    "10.4.0",
-    "10.3.0",
-    "10.2.1",
-    "10.2.0",
-    "10.1.0",
-    "10.0.0",
-    "9.11.2",
-    "9.11.1",
-    "9.11.0",
-    "9.10.1",
-    "9.10.0",
-    "9.9.0",
-    "9.8.0",
-    "9.7.1",
-    "9.7.0",
-    "9.6.1",
-    "9.6.0",
-    "9.5.0",
-    "9.4.0",
-    "9.3.0",
-    "9.2.1",
-    "9.2.0",
-    "9.1.0",
-    "9.0.0",
-    "8.11.3",
-    "8.11.2",
-    "8.11.1",
-    "8.11.0",
-    "8.10.0",
-    "8.9.4",
-    "8.9.3",
-    "8.9.2",
-    "8.9.1",
-    "8.9.0",
-    "8.8.1",
-    "8.8.0",
-    "8.7.0",
-    "8.6.0",
-    "8.5.0",
-    "8.4.0",
-    "8.3.0",
-    "8.2.1",
-    "8.2.0",
-    "8.1.4",
-    "8.1.3",
-    "8.1.2",
-    "8.1.1",
-    "8.1.0",
-    "8.0.0"]
+def readFileArray(filename):
+    with open(filename, 'r') as f:
+        return [line.replace("\n", "") for line in f.read().split("\n")]
+
+def versionStrings(nodeVersion, puppeteerVersion):
+    version = '{0}-{1}'.format(nodeVersion, puppeteerVersion)
+    versionPath = "version/{0}".format(version)
+
+    if not os.path.exists(versionPath):
+        os.makedirs(versionPath)
+
+    return (version, versionPath)
+
+
+nodeVersions = readFileArray("NODE_VERSIONS")
+puppeteerVersions = readFileArray("PUPPETEER_VERSIONS")
 
 if __name__ == '__main__':
-    for nodeVersion in nodeVersions:
-        versionPath = 'version/' + nodeVersion
-        if not os.path.exists(versionPath):
-            os.makedirs(versionPath)
+    dockerfileInformationArr = []
 
-        with open(versionPath + "/Dockerfile", "w") as f:
-            f.write(dockerfileTemplate.format(nodeVersion))
+    for nodeVersion in nodeVersions:
+        for puppeteerVersion in puppeteerVersions:
+            version, versionPath = versionStrings(nodeVersion, puppeteerVersion)
+            dockerfileInformationArr.append(dict(branch='master', tag=version, path='/' + versionPath))
+
+    # Generate Browser Scripts
+    with open('./browser-scripts/dockerhub.com-addAllVersionsToBuildSettings.js.template', 'r') as f:
+        fContents = f.read()
+        newContents = fContents.replace('{dockerfile_information_arr}', json.dumps(dockerfileInformationArr))
+
+        with open('./browser-scripts/dockerhub.com-addAllVersionsToBuildSettings.js', 'w') as nf:
+            print("Writing: browser-scripts/dockerhub.com-addAllVersionsToBuildSettings.js")
+            nf.write(newContents)
+
+    for nodeVersion in nodeVersions:
+        for puppeteerVersion in puppeteerVersions:
+            version, versionPath = versionStrings(nodeVersion, puppeteerVersion)
+
+            # Generate Dockerfiles
+            with open(versionPath + "/Dockerfile", "w") as f:
+                print("Writing: " + versionPath)
+                f.write(dockerfileTemplate.format(node_version=nodeVersion, puppeteer_version=puppeteerVersion))
+
+
 
