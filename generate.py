@@ -1,4 +1,5 @@
-import os, json
+import os, json, subprocess
+from multiprocessing import Pool
 
 dockerfileTemplate = """FROM node:{node_version}-slim
 
@@ -39,34 +40,31 @@ def versionStrings(nodeVersion, puppeteerVersion):
     return (version, versionPath)
 
 
-nodeVersions = readFileArray("NODE_VERSIONS")
-puppeteerVersions = readFileArray("PUPPETEER_VERSIONS")
+def buildAndPushDockerImage(versionTuple):
+    nodeVersion, puppeteerVersion = versionTuple
+    version, versionPath = versionStrings(nodeVersion, puppeteerVersion)
+
+    with open(versionPath + "/Dockerfile", "w") as f:
+        print("Writing: " + versionPath)
+        f.write(dockerfileTemplate.format(node_version=nodeVersion, puppeteer_version=puppeteerVersion))
+
+    exit_code = subprocess.call(["docker", "build", "-t", "brthornbury/docker-node-chrome-puppeteer-xvfb:" + version, versionPath])
+    if (exit_code != 0):
+        raise Exception("failed to build docker image " + version)
+
+    exit_code = subprocess.call(["docker", "push", "brthornbury/docker-node-chrome-puppeteer-xvfb:" + version])
+    if (exit_code != 0):
+        raise Exception("failed to push docker image " + version)
+
 
 if __name__ == '__main__':
-    dockerfileInformationArr = []
+    nodeVersions = readFileArray("NODE_VERSIONS")
+    puppeteerVersions = readFileArray("PUPPETEER_VERSIONS")
 
-    for nodeVersion in nodeVersions:
-        for puppeteerVersion in puppeteerVersions:
-            version, versionPath = versionStrings(nodeVersion, puppeteerVersion)
-            dockerfileInformationArr.append(dict(branch='master', tag=version, path='/' + versionPath))
+    versionSuperset = [(x,y) for x in nodeVersions for y in puppeteerVersions]
+    print("Building {0} docker images...".format(len(versionSuperset)))
 
-    # Generate Browser Scripts
-    with open('./browser-scripts/dockerhub.com-addAllVersionsToBuildSettings.js.template', 'r') as f:
-        fContents = f.read()
-        newContents = fContents.replace('{dockerfile_information_arr}', json.dumps(dockerfileInformationArr))
+    concurrency = 10
+    pool = Pool(processes=concurrency)
 
-        with open('./browser-scripts/dockerhub.com-addAllVersionsToBuildSettings.js', 'w') as nf:
-            print("Writing: browser-scripts/dockerhub.com-addAllVersionsToBuildSettings.js")
-            nf.write(newContents)
-
-    for nodeVersion in nodeVersions:
-        for puppeteerVersion in puppeteerVersions:
-            version, versionPath = versionStrings(nodeVersion, puppeteerVersion)
-
-            # Generate Dockerfiles
-            with open(versionPath + "/Dockerfile", "w") as f:
-                print("Writing: " + versionPath)
-                f.write(dockerfileTemplate.format(node_version=nodeVersion, puppeteer_version=puppeteerVersion))
-
-
-
+    pool.map(buildAndPushDockerImage, versionSuperset)
