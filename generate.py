@@ -66,7 +66,7 @@ def versionStrings(nodeVersion, puppeteerVersion):
 
 def buildDockerImage(nodeVersion, puppeteerVersion):
     version, versionPath = versionStrings(nodeVersion, puppeteerVersion)
-    print("Building docker image.", version)
+    print "Building docker image.", version
     with open(versionPath + "/Dockerfile", "w") as f:
         f.write(dockerfileTemplate.format(node_version=nodeVersion, puppeteer_version=puppeteerVersion))
 
@@ -76,17 +76,17 @@ def buildDockerImage(nodeVersion, puppeteerVersion):
         cmdResult.dump()
         raise Exception("failed to build docker image " + version)
     
-    print("Finished building docker image.", version)
+    print "Finished building docker image.", version
 
 
 def pushDockerImage(version):
-    print("Pushing docker image.", version)
+    print "Pushing docker image.", version
     cmdResult = CmdResult.get(["docker", "push", "brthornbury/docker-node-chrome-puppeteer-xvfb:" + version])
     if (cmdResult.failed):
         cmdResult.dump()
         raise Exception("failed to push docker image " + version)
 
-    print("Finished pushing docker image.", version)
+    print "Finished pushing docker image.", version
 
 
 def buildAndPushDockerImage(versionTuple):

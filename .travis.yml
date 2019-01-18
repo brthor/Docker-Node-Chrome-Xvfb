@@ -21,7 +21,7 @@ python:
 # the whole Travis build is considered a failure).
 script:
   - 'docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD'
-  - 'python generate.py'
+  - 'python -u generate.py'
 
 # don't notify me when things fail
 notifications:
