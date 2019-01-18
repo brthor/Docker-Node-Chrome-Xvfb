@@ -26,9 +26,33 @@ RUN cd /app && echo "{{}}" > package.json && npm install --save puppeteer@{puppe
 
 """
 
+class CmdResult(object):
+    def __init__(self, returncode, stdout, stderr):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+        self.failed = self.returncode != 0
+
+    def dump(self):
+        print("-- STDOUT --")
+        print(self.stdout)
+        print("-- END STDOUT --")
+        print("-- STDERR --")
+        print(self.stderr)
+        print("-- END STDERR --")
+
+    @classmethod
+    def get(cls, cmdArr, timeout=900):
+        proc = subprocess.Popen(cmdArr, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        outs, errs = proc.communicate()
+        
+        return cls(proc.returncode, outs, errs)
+
+
 def readFileArray(filename):
     with open(filename, 'r') as f:
         return [line.replace("\n", "") for line in f.read().split("\n")]
+
 
 def versionStrings(nodeVersion, puppeteerVersion):
     version = '{0}-{1}'.format(nodeVersion, puppeteerVersion)
@@ -40,21 +64,34 @@ def versionStrings(nodeVersion, puppeteerVersion):
     return (version, versionPath)
 
 
-def buildAndPushDockerImage(versionTuple):
-    nodeVersion, puppeteerVersion = versionTuple
+def buildDockerImage(nodeVersion, puppeteerVersion):
     version, versionPath = versionStrings(nodeVersion, puppeteerVersion)
-
     with open(versionPath + "/Dockerfile", "w") as f:
         print("Writing: " + versionPath)
         f.write(dockerfileTemplate.format(node_version=nodeVersion, puppeteer_version=puppeteerVersion))
 
-    exit_code = subprocess.call(["docker", "build", "-t", "brthornbury/docker-node-chrome-puppeteer-xvfb:" + version, versionPath])
-    if (exit_code != 0):
+    CmdResult
+    cmdResult = CmdResult.get(["docker", "build", "-t", "brthornbury/docker-node-chrome-puppeteer-xvfb:" + version, versionPath])
+    if (cmdResult.failed):
+        cmdResult.dump()
         raise Exception("failed to build docker image " + version)
 
-    exit_code = subprocess.call(["docker", "push", "brthornbury/docker-node-chrome-puppeteer-xvfb:" + version])
-    if (exit_code != 0):
+def pushDockerImage(version):
+    cmdResult = CmdResult.get(["docker", "push", "brthornbury/docker-node-chrome-puppeteer-xvfb:" + version])
+    if (cmdResult.failed):
+        cmdResult.dump()
         raise Exception("failed to push docker image " + version)
+
+
+def buildAndPushDockerImage(versionTuple):
+    nodeVersion, puppeteerVersion = versionTuple
+    version, versionPath = versionStrings(nodeVersion, puppeteerVersion)
+
+    try:
+        buildDockerImage(nodeVersion, puppeteerVersion)
+        pushDockerImage(version)
+    except Exception as e:
+        print(e)
 
 
 if __name__ == '__main__':
